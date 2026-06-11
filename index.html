@@ -1,0 +1,1129 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sudoku Solver</title>
+  <style>
+    :root {
+      --ink: #51495f;
+      --muted: #81778f;
+      --paper: #fffaf7;
+      --panel: #fffefc;
+      --mint: #c9f2df;
+      --mint-deep: #76cfa5;
+      --pink: #ffd6df;
+      --lavender: #ded8ff;
+      --butter: #fff0b8;
+      --blue: #9dd9f3;
+      --blue-text: #4aaed5;
+      --danger: #e25563;
+      --line: #b9adc8;
+      --heavy-line: #6d617a;
+      --shadow: 0 18px 50px rgba(103, 91, 122, 0.16);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(255, 214, 223, 0.78), transparent 32rem),
+        radial-gradient(circle at top right, rgba(201, 242, 223, 0.86), transparent 30rem),
+        linear-gradient(135deg, #fffaf7 0%, #f7f2ff 54%, #f0fbff 100%);
+    }
+
+    main {
+      width: min(100%, 980px);
+      margin: 0 auto;
+      padding: 32px 18px 46px;
+    }
+
+    .shell {
+      display: grid;
+      gap: 18px;
+      align-items: start;
+      grid-template-columns: minmax(320px, 620px) minmax(240px, 1fr);
+    }
+
+    header {
+      margin-bottom: 22px;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2rem, 6vw, 4rem);
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 0 auto;
+      max-width: 650px;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.7;
+    }
+
+    .board-panel,
+    .side-panel {
+      border: 1px solid rgba(109, 97, 122, 0.13);
+      border-radius: 8px;
+      background: rgba(255, 254, 252, 0.86);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .board-panel {
+      padding: 18px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      min-height: 42px;
+      padding: 0 16px;
+      transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+    }
+
+    button:hover {
+      filter: saturate(1.08);
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .solve-button {
+      background: linear-gradient(135deg, var(--mint), var(--blue));
+      box-shadow: 0 10px 24px rgba(90, 178, 193, 0.22);
+    }
+
+    .clear-button {
+      background: var(--pink);
+    }
+
+    .history-button {
+      background: var(--lavender);
+    }
+
+    .puzzle-button {
+      background: var(--butter);
+    }
+
+    .puzzle-picker {
+      position: relative;
+    }
+
+    .difficulty-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      display: none;
+      min-width: 260px;
+      padding: 8px;
+      border: 2px solid var(--heavy-line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 16px 38px rgba(81, 73, 95, 0.22);
+      z-index: 30;
+    }
+
+    .difficulty-menu.open {
+      display: grid;
+      gap: 7px;
+    }
+
+    .difficulty-option {
+      width: 100%;
+      justify-content: flex-start;
+      background: #fff;
+      color: var(--ink);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    .difficulty-option:hover,
+    .difficulty-option:focus-visible {
+      background: var(--mint);
+      outline: none;
+    }
+
+    .status {
+      min-height: 24px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      font-weight: 650;
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .sudoku-wrap {
+      position: relative;
+      width: min(100%, 584px);
+      margin: 0 auto;
+      aspect-ratio: 1;
+    }
+
+    .sudoku-board {
+      display: grid;
+      width: 100%;
+      height: 100%;
+      grid-template-columns: repeat(9, 1fr);
+      grid-template-rows: repeat(9, 1fr);
+      border: 3px solid var(--heavy-line);
+      background: var(--heavy-line);
+      overflow: hidden;
+    }
+
+    .cell {
+      display: grid;
+      place-items: center;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      background: rgba(255, 255, 255, 0.74);
+      color: var(--ink);
+      font-size: clamp(1.35rem, 5vw, 2.4rem);
+      font-weight: 760;
+      line-height: 1;
+      padding: 0;
+      box-shadow: none;
+    }
+
+    .cell:nth-child(3n) {
+      border-right-width: 3px;
+      border-right-color: var(--heavy-line);
+    }
+
+    .cell:nth-child(9n) {
+      border-right: 0;
+    }
+
+    .cell:nth-child(n + 19):nth-child(-n + 27),
+    .cell:nth-child(n + 46):nth-child(-n + 54) {
+      border-bottom-width: 3px;
+      border-bottom-color: var(--heavy-line);
+    }
+
+    .cell:nth-child(n + 73) {
+      border-bottom: 0;
+    }
+
+    .cell:hover,
+    .cell:focus-visible {
+      background: #fff8cf;
+      outline: 3px solid rgba(157, 217, 243, 0.7);
+      outline-offset: -4px;
+      z-index: 1;
+    }
+
+    .cell.invalid {
+      color: var(--danger);
+      background: #fff1f3;
+    }
+
+    .cell.given {
+      color: var(--ink);
+      font-weight: 780;
+    }
+
+    .cell.solved {
+      color: var(--blue-text);
+      font-weight: 300;
+    }
+
+    .cell.locked {
+      cursor: not-allowed;
+    }
+
+    .number-menu {
+      position: absolute;
+      display: none;
+      grid-template-columns: repeat(3, 1fr);
+      width: min(180px, 42vw);
+      border: 2px solid var(--heavy-line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--panel);
+      box-shadow: 0 16px 38px rgba(81, 73, 95, 0.22);
+      z-index: 20;
+    }
+
+    .number-menu.open {
+      display: grid;
+    }
+
+    .number-option {
+      display: grid;
+      place-items: center;
+      aspect-ratio: 1;
+      border-right: 1px solid var(--lavender);
+      border-bottom: 1px solid var(--lavender);
+      background: #fff;
+      color: var(--ink);
+      font-size: 1.35rem;
+      font-weight: 760;
+    }
+
+    .number-option:nth-child(3n) {
+      border-right: 0;
+    }
+
+    .number-option:nth-child(n + 7) {
+      border-bottom: 0;
+    }
+
+    .number-option:hover,
+    .number-option:focus-visible {
+      background: var(--mint);
+      outline: none;
+    }
+
+    .side-panel {
+      padding: 18px;
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1.15rem;
+    }
+
+    .rule-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .rule-list strong {
+      color: var(--ink);
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(109, 97, 122, 0.14);
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .swatch {
+      display: inline-block;
+      width: 0.9rem;
+      height: 0.9rem;
+      margin-right: 7px;
+      border-radius: 4px;
+      vertical-align: -0.1rem;
+    }
+
+    .swatch-red {
+      background: #fff1f3;
+      border: 1px solid var(--danger);
+    }
+
+    .swatch-blue {
+      background: #eefaff;
+      border: 1px solid var(--blue-text);
+    }
+
+    .history-panel {
+      display: none;
+      grid-column: 1 / -1;
+      padding: 18px;
+      border: 1px solid rgba(109, 97, 122, 0.13);
+      border-radius: 8px;
+      background: rgba(255, 254, 252, 0.88);
+      box-shadow: var(--shadow);
+    }
+
+    .history-panel.open {
+      display: block;
+    }
+
+    .history-head {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .history-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .history-list {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(112px, 1fr));
+      gap: 12px;
+    }
+
+    .history-empty {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .history-card {
+      border: 1px solid rgba(109, 97, 122, 0.16);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+      padding: 8px;
+      text-align: left;
+      width: 100%;
+    }
+
+    .history-card:hover,
+    .history-card:focus-visible {
+      outline: 3px solid rgba(157, 217, 243, 0.7);
+      outline-offset: 2px;
+    }
+
+    .history-meta {
+      display: grid;
+      gap: 2px;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.35;
+    }
+
+    .history-meta strong {
+      color: var(--ink);
+      font-size: 0.86rem;
+    }
+
+    .mini-board {
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      border: 2px solid var(--heavy-line);
+      aspect-ratio: 1;
+      overflow: hidden;
+      background: var(--heavy-line);
+    }
+
+    .mini-cell {
+      display: grid;
+      place-items: center;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.88);
+      color: var(--ink);
+      font-size: clamp(0.44rem, 1.5vw, 0.72rem);
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .mini-cell:nth-child(3n) {
+      border-right-width: 2px;
+      border-right-color: var(--heavy-line);
+    }
+
+    .mini-cell:nth-child(9n) {
+      border-right: 0;
+    }
+
+    .mini-cell:nth-child(n + 19):nth-child(-n + 27),
+    .mini-cell:nth-child(n + 46):nth-child(-n + 54) {
+      border-bottom-width: 2px;
+      border-bottom-color: var(--heavy-line);
+    }
+
+    .mini-cell:nth-child(n + 73) {
+      border-bottom: 0;
+    }
+
+    .mini-cell.solved {
+      color: var(--blue-text);
+      font-weight: 300;
+    }
+
+    @media (max-width: 820px) {
+      main {
+        padding: 22px 12px 32px;
+      }
+
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .board-panel,
+      .side-panel {
+        padding: 12px;
+      }
+
+      .toolbar {
+        align-items: stretch;
+      }
+
+      .actions,
+      .actions button {
+        width: 100%;
+      }
+
+      .difficulty-menu {
+        width: 100%;
+      }
+
+      .history-list {
+        grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+      }
+
+      .status {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Sudoku Solver</h1>
+      <p class="subtitle">點選格子選擇 1 到 9。重複的列、行或 3 x 3 宮格會即時標成紅色；按下解題後會保留你輸入的數字，並用淺藍色細體字填入解答。</p>
+    </header>
+
+    <div class="shell">
+      <section class="board-panel" aria-label="數獨求解器">
+        <div class="toolbar">
+          <div class="actions">
+            <button class="solve-button" id="solveButton" type="button">解題</button>
+            <button class="clear-button" id="clearButton" type="button">清空</button>
+            <button class="history-button" id="historyButton" type="button" aria-expanded="false" aria-controls="historyPanel">歷史紀錄</button>
+            <div class="puzzle-picker">
+              <button class="puzzle-button" id="puzzleButton" type="button" aria-expanded="false" aria-controls="difficultyMenu">出題</button>
+              <div class="difficulty-menu" id="difficultyMenu" aria-label="選擇難度">
+                <button class="difficulty-option" type="button" data-difficulty="kindergarten">幼稚園：41 - 50 格</button>
+                <button class="difficulty-option" type="button" data-difficulty="easy">簡單：36 - 40 格</button>
+                <button class="difficulty-option" type="button" data-difficulty="medium">中等：30 - 34 格</button>
+                <button class="difficulty-option" type="button" data-difficulty="hard">困難：21 - 29 格</button>
+                <button class="difficulty-option" type="button" data-difficulty="hell">地獄：15 - 20 格</button>
+              </div>
+            </div>
+          </div>
+          <div class="status" id="status" role="status" aria-live="polite">準備好了，先填一些線索吧。</div>
+        </div>
+
+        <div class="sudoku-wrap" id="boardWrap">
+          <div class="sudoku-board" id="board" aria-label="9 乘 9 數獨棋盤"></div>
+          <div class="number-menu" id="numberMenu" role="menu" aria-label="選擇數字"></div>
+        </div>
+      </section>
+
+      <aside class="side-panel">
+        <h2>規則</h2>
+        <ul class="rule-list">
+          <li><strong>橫排不重複：</strong>每一列的 1 到 9 不能重複。</li>
+          <li><strong>直列不重複：</strong>每一行的 1 到 9 不能重複。</li>
+          <li><strong>宮格不重複：</strong>每個 3 x 3 宮格的 1 到 9 不能重複。</li>
+        </ul>
+
+        <div class="legend" aria-label="顏色說明">
+          <span><span class="swatch swatch-red"></span>紅字代表目前違反數獨規則。</span>
+          <span><span class="swatch swatch-blue"></span>淺藍細字代表解題計算出的數字。</span>
+        </div>
+      </aside>
+
+      <section class="history-panel" id="historyPanel" aria-label="歷史紀錄">
+        <div class="history-head">
+          <h2>歷史紀錄</h2>
+          <p>儲存在此瀏覽器，最新紀錄排在最前面。</p>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const SIZE = 9;
+    const BOX = 3;
+    const EMPTY = 0;
+    const HISTORY_KEY = "sudoku-solver-history";
+    const MAX_HISTORY = 50;
+    const difficulties = {
+      kindergarten: { label: "幼稚園", min: 41, max: 50 },
+      easy: { label: "簡單", min: 36, max: 40 },
+      medium: { label: "中等", min: 30, max: 34 },
+      hard: { label: "困難", min: 21, max: 29 },
+      hell: { label: "地獄", min: 15, max: 20 }
+    };
+
+    const boardElement = document.querySelector("#board");
+    const boardWrap = document.querySelector("#boardWrap");
+    const numberMenu = document.querySelector("#numberMenu");
+    const statusElement = document.querySelector("#status");
+    const solveButton = document.querySelector("#solveButton");
+    const clearButton = document.querySelector("#clearButton");
+    const historyButton = document.querySelector("#historyButton");
+    const historyPanel = document.querySelector("#historyPanel");
+    const historyList = document.querySelector("#historyList");
+    const puzzleButton = document.querySelector("#puzzleButton");
+    const difficultyMenu = document.querySelector("#difficultyMenu");
+
+    let board = createEmptyBoard();
+    let fixedCells = createEmptyBoard(false);
+    let lockedCells = createEmptyBoard(false);
+    let selectedCell = null;
+
+    function createEmptyBoard(fill = EMPTY) {
+      return Array.from({ length: SIZE }, () => Array(SIZE).fill(fill));
+    }
+
+    function renderBoard() {
+      boardElement.innerHTML = "";
+      for (let row = 0; row < SIZE; row += 1) {
+        for (let col = 0; col < SIZE; col += 1) {
+          const cell = document.createElement("button");
+          cell.className = "cell";
+          cell.type = "button";
+          cell.dataset.row = row;
+          cell.dataset.col = col;
+          cell.setAttribute("aria-label", `第 ${row + 1} 列，第 ${col + 1} 行`);
+          cell.addEventListener("click", () => openNumberMenu(cell, row, col));
+          boardElement.appendChild(cell);
+        }
+      }
+      updateBoardView();
+      validateBoard();
+    }
+
+    function renderNumberMenu() {
+      for (let value = 1; value <= SIZE; value += 1) {
+        const option = document.createElement("button");
+        option.className = "number-option";
+        option.type = "button";
+        option.textContent = value;
+        option.setAttribute("role", "menuitem");
+        option.addEventListener("click", () => chooseNumber(value));
+        numberMenu.appendChild(option);
+      }
+    }
+
+    function openNumberMenu(cell, row, col) {
+      if (lockedCells[row][col]) {
+        selectedCell = null;
+        closeNumberMenu();
+        setStatus("這是出題線索，請按清空或重新出題後再修改。", true);
+        return;
+      }
+
+      selectedCell = { row, col };
+      const wrapRect = boardWrap.getBoundingClientRect();
+      const cellRect = cell.getBoundingClientRect();
+      const menuWidth = Math.min(180, window.innerWidth * 0.42);
+      const left = Math.min(
+        cellRect.left - wrapRect.left,
+        wrapRect.width - menuWidth
+      );
+      const top = Math.min(
+        cellRect.bottom - wrapRect.top + 6,
+        wrapRect.height - menuWidth
+      );
+
+      numberMenu.style.left = `${Math.max(0, left)}px`;
+      numberMenu.style.top = `${Math.max(0, top)}px`;
+      numberMenu.classList.add("open");
+    }
+
+    function chooseNumber(value) {
+      if (!selectedCell) {
+        return;
+      }
+
+      const { row, col } = selectedCell;
+      board[row][col] = board[row][col] === value ? EMPTY : value;
+      fixedCells[row][col] = board[row][col] !== EMPTY;
+      selectedCell = null;
+      closeNumberMenu();
+      updateBoardView();
+      validateBoard();
+    }
+
+    function closeNumberMenu() {
+      numberMenu.classList.remove("open");
+    }
+
+    function updateBoardView(invalidCells = new Set()) {
+      document.querySelectorAll(".cell").forEach((cell) => {
+        const row = Number(cell.dataset.row);
+        const col = Number(cell.dataset.col);
+        const value = board[row][col];
+        const key = cellKey(row, col);
+
+        cell.textContent = value || "";
+        cell.classList.toggle("invalid", invalidCells.has(key));
+        cell.classList.toggle("given", Boolean(value && fixedCells[row][col]));
+        cell.classList.toggle("solved", Boolean(value && !fixedCells[row][col]));
+        cell.classList.toggle("locked", Boolean(lockedCells[row][col]));
+      });
+    }
+
+    function validateBoard() {
+      const invalidCells = findInvalidCells(board);
+      updateBoardView(invalidCells);
+
+      if (invalidCells.size > 0) {
+        setStatus("目前有數字違反數獨規則。", true);
+        return false;
+      }
+
+      setStatus("目前盤面符合規則。");
+      return true;
+    }
+
+    function findInvalidCells(grid) {
+      const invalid = new Set();
+
+      for (let index = 0; index < SIZE; index += 1) {
+        markDuplicates(getRowCells(index), grid, invalid);
+        markDuplicates(getColumnCells(index), grid, invalid);
+      }
+
+      for (let row = 0; row < SIZE; row += BOX) {
+        for (let col = 0; col < SIZE; col += BOX) {
+          markDuplicates(getBoxCells(row, col), grid, invalid);
+        }
+      }
+
+      return invalid;
+    }
+
+    function markDuplicates(cells, grid, invalid) {
+      const seen = new Map();
+      cells.forEach(([row, col]) => {
+        const value = grid[row][col];
+        if (!value) {
+          return;
+        }
+
+        if (!seen.has(value)) {
+          seen.set(value, []);
+        }
+        seen.get(value).push([row, col]);
+      });
+
+      seen.forEach((positions) => {
+        if (positions.length > 1) {
+          positions.forEach(([row, col]) => invalid.add(cellKey(row, col)));
+        }
+      });
+    }
+
+    function getRowCells(row) {
+      return Array.from({ length: SIZE }, (_, col) => [row, col]);
+    }
+
+    function getColumnCells(col) {
+      return Array.from({ length: SIZE }, (_, row) => [row, col]);
+    }
+
+    function getBoxCells(row, col) {
+      const startRow = Math.floor(row / BOX) * BOX;
+      const startCol = Math.floor(col / BOX) * BOX;
+      const cells = [];
+
+      for (let r = startRow; r < startRow + BOX; r += 1) {
+        for (let c = startCol; c < startCol + BOX; c += 1) {
+          cells.push([r, c]);
+        }
+      }
+
+      return cells;
+    }
+
+    function cellKey(row, col) {
+      return `${row}-${col}`;
+    }
+
+    function setStatus(message, isError = false) {
+      statusElement.textContent = message;
+      statusElement.classList.toggle("error", isError);
+    }
+
+    function solveCurrentBoard() {
+      closeNumberMenu();
+
+      if (!validateBoard()) {
+        return;
+      }
+
+      const puzzle = board.map((row) => row.slice());
+      const givenCells = board.map((row) => row.map((value) => value !== EMPTY));
+      const puzzleBoard = board.map((row) => row.slice());
+      fixedCells = givenCells.map((row) => row.slice());
+
+      if (solveGrid(puzzle)) {
+        board = puzzle;
+        updateBoardView();
+        saveHistory({
+          type: "解題",
+          puzzleBoard,
+          board: board.map((row) => row.slice()),
+          solvedCells: givenCells.map((row) => row.map((isGiven) => !isGiven)),
+          clueCount: countFilledCells(givenCells),
+          createdAt: new Date().toISOString()
+        });
+        setStatus("已完成解題，淺藍色是解題填入的數字。");
+      } else {
+        setStatus("找不到符合規則的解答，請調整線索數字。", true);
+      }
+    }
+
+    function solveGrid(grid, randomize = false) {
+      const emptyCell = findBestEmptyCell(grid);
+      if (!emptyCell) {
+        return true;
+      }
+
+      const { row, col } = emptyCell;
+      const candidates = randomize
+        ? shuffle(emptyCell.candidates.slice())
+        : emptyCell.candidates;
+
+      for (const value of candidates) {
+        grid[row][col] = value;
+        if (solveGrid(grid, randomize)) {
+          return true;
+        }
+        grid[row][col] = EMPTY;
+      }
+
+      return false;
+    }
+
+    function findBestEmptyCell(grid) {
+      let best = null;
+
+      for (let row = 0; row < SIZE; row += 1) {
+        for (let col = 0; col < SIZE; col += 1) {
+          if (grid[row][col] !== EMPTY) {
+            continue;
+          }
+
+          const candidates = getCandidates(grid, row, col);
+          if (candidates.length === 0) {
+            return { row, col, candidates };
+          }
+
+          if (!best || candidates.length < best.candidates.length) {
+            best = { row, col, candidates };
+          }
+        }
+      }
+
+      return best;
+    }
+
+    function getCandidates(grid, row, col) {
+      const used = new Set();
+
+      for (let index = 0; index < SIZE; index += 1) {
+        used.add(grid[row][index]);
+        used.add(grid[index][col]);
+      }
+
+      const startRow = Math.floor(row / BOX) * BOX;
+      const startCol = Math.floor(col / BOX) * BOX;
+      for (let r = startRow; r < startRow + BOX; r += 1) {
+        for (let c = startCol; c < startCol + BOX; c += 1) {
+          used.add(grid[r][c]);
+        }
+      }
+
+      return Array.from({ length: SIZE }, (_, index) => index + 1)
+        .filter((value) => !used.has(value));
+    }
+
+    function shuffle(items) {
+      for (let index = items.length - 1; index > 0; index -= 1) {
+        const randomIndex = Math.floor(Math.random() * (index + 1));
+        [items[index], items[randomIndex]] = [items[randomIndex], items[index]];
+      }
+      return items;
+    }
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function clearBoard() {
+      board = createEmptyBoard();
+      fixedCells = createEmptyBoard(false);
+      lockedCells = createEmptyBoard(false);
+      closeNumberMenu();
+      closeDifficultyMenu();
+      updateBoardView();
+      setStatus("已清空盤面。");
+    }
+
+    function toggleDifficultyMenu() {
+      const isOpen = difficultyMenu.classList.toggle("open");
+      puzzleButton.setAttribute("aria-expanded", String(isOpen));
+      closeNumberMenu();
+    }
+
+    function closeDifficultyMenu() {
+      difficultyMenu.classList.remove("open");
+      puzzleButton.setAttribute("aria-expanded", "false");
+    }
+
+    function createPuzzle(difficultyKey) {
+      const difficulty = difficulties[difficultyKey];
+      if (!difficulty) {
+        return;
+      }
+
+      const solvedGrid = createEmptyBoard();
+      solveGrid(solvedGrid, true);
+
+      const clueCount = randomInt(difficulty.min, difficulty.max);
+      const clueKeys = new Set(
+        shuffle(Array.from({ length: SIZE * SIZE }, (_, index) => index))
+          .slice(0, clueCount)
+      );
+
+      board = createEmptyBoard();
+      fixedCells = createEmptyBoard(false);
+      lockedCells = createEmptyBoard(false);
+
+      for (let index = 0; index < SIZE * SIZE; index += 1) {
+        if (!clueKeys.has(index)) {
+          continue;
+        }
+
+        const row = Math.floor(index / SIZE);
+        const col = index % SIZE;
+        board[row][col] = solvedGrid[row][col];
+        fixedCells[row][col] = true;
+        lockedCells[row][col] = true;
+      }
+
+      closeNumberMenu();
+      closeDifficultyMenu();
+      updateBoardView();
+      validateBoard();
+      saveHistory({
+        type: "出題",
+        difficulty: difficulty.label,
+        puzzleBoard: board.map((row) => row.slice()),
+        board: board.map((row) => row.slice()),
+        solvedCells: createEmptyBoard(false),
+        clueCount,
+        createdAt: new Date().toISOString()
+      });
+      setStatus(`${difficulty.label}題目已產生，隨機顯示 ${clueCount} 格數字。`);
+    }
+
+    function countFilledCells(grid) {
+      return grid.flat().filter(Boolean).length;
+    }
+
+    function getHistory() {
+      try {
+        const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+        return Array.isArray(history) ? history : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveHistory(record) {
+      try {
+        const history = [record, ...getHistory()].slice(0, MAX_HISTORY);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        renderHistory();
+      } catch (error) {
+        setStatus("歷史紀錄儲存失敗，可能是瀏覽器儲存空間受限。", true);
+      }
+    }
+
+    function toggleHistoryPanel() {
+      const isOpen = historyPanel.classList.toggle("open");
+      historyButton.setAttribute("aria-expanded", String(isOpen));
+      if (isOpen) {
+        renderHistory();
+      }
+    }
+
+    function renderHistory() {
+      const history = getHistory();
+      historyList.innerHTML = "";
+
+      if (history.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "history-empty";
+        empty.textContent = "目前沒有歷史紀錄。";
+        historyList.appendChild(empty);
+        return;
+      }
+
+      history.forEach((record, index) => {
+        const card = document.createElement("button");
+        card.className = "history-card";
+        card.type = "button";
+        card.addEventListener("click", () => loadHistoryPuzzle(record));
+
+        const meta = document.createElement("div");
+        meta.className = "history-meta";
+
+        const title = document.createElement("strong");
+        title.textContent = record.difficulty
+          ? `${record.type}：${record.difficulty}`
+          : record.type;
+
+        const detail = document.createElement("span");
+        detail.textContent = `${record.clueCount || 0} 格線索`;
+
+        const time = document.createElement("span");
+        time.textContent = formatHistoryTime(record.createdAt);
+
+        meta.append(title, detail, time);
+        card.append(meta, createMiniBoard(record));
+        historyList.appendChild(card);
+      });
+    }
+
+    function loadHistoryPuzzle(record) {
+      const puzzle = getPuzzleFromHistory(record);
+      board = puzzle.map((row) => row.slice());
+      fixedCells = puzzle.map((row) => row.map((value) => value !== EMPTY));
+      lockedCells = fixedCells.map((row) => row.slice());
+      selectedCell = null;
+      closeNumberMenu();
+      closeDifficultyMenu();
+      updateBoardView();
+      validateBoard();
+      setStatus("已從歷史紀錄載入題目，答案未帶回。");
+    }
+
+    function getPuzzleFromHistory(record) {
+      if (isValidGrid(record.puzzleBoard)) {
+        return record.puzzleBoard.map((row) => row.slice());
+      }
+
+      const source = isValidGrid(record.board)
+        ? record.board
+        : createEmptyBoard();
+      const solvedCells = isValidGrid(record.solvedCells)
+        ? record.solvedCells
+        : createEmptyBoard(false);
+
+      return source.map((row, rowIndex) => row.map((value, colIndex) => (
+        solvedCells[rowIndex][colIndex] ? EMPTY : value
+      )));
+    }
+
+    function isValidGrid(grid) {
+      return Array.isArray(grid)
+        && grid.length === SIZE
+        && grid.every((row) => Array.isArray(row) && row.length === SIZE);
+    }
+
+    function createMiniBoard(record) {
+      const miniBoard = document.createElement("div");
+      miniBoard.className = "mini-board";
+
+      for (let row = 0; row < SIZE; row += 1) {
+        for (let col = 0; col < SIZE; col += 1) {
+          const cell = document.createElement("span");
+          cell.className = "mini-cell";
+          cell.textContent = record.board?.[row]?.[col] || "";
+          cell.classList.toggle("solved", Boolean(record.solvedCells?.[row]?.[col]));
+          miniBoard.appendChild(cell);
+        }
+      }
+
+      return miniBoard;
+    }
+
+    function formatHistoryTime(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return "";
+      }
+
+      return date.toLocaleString("zh-TW", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
+    document.addEventListener("click", (event) => {
+      const clickedCell = event.target.classList.contains("cell");
+      const clickedNumberMenu = numberMenu.contains(event.target);
+      const clickedDifficultyPicker = event.target.closest(".puzzle-picker");
+
+      if (!clickedNumberMenu && !clickedCell) {
+        closeNumberMenu();
+      }
+
+      if (!clickedDifficultyPicker) {
+        closeDifficultyMenu();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeNumberMenu();
+        closeDifficultyMenu();
+      }
+    });
+
+    solveButton.addEventListener("click", solveCurrentBoard);
+    clearButton.addEventListener("click", clearBoard);
+    historyButton.addEventListener("click", toggleHistoryPanel);
+    puzzleButton.addEventListener("click", toggleDifficultyMenu);
+    difficultyMenu.addEventListener("click", (event) => {
+      const option = event.target.closest("[data-difficulty]");
+      if (option) {
+        createPuzzle(option.dataset.difficulty);
+      }
+    });
+
+    renderNumberMenu();
+    renderBoard();
+    renderHistory();
+  </script>
+</body>
+</html>

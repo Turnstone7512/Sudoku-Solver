@@ -3,6 +3,7 @@ setlocal
 
 set "REPO_URL=https://github.com/Turnstone7512/Sudoku-Solver.git"
 set "BRANCH=main"
+set "COMMIT_MESSAGE=Update Sudoku Solver"
 
 cd /d "%~dp0"
 
@@ -42,7 +43,6 @@ git diff --cached --quiet
 if not errorlevel 1 (
   echo [INFO] No new changes to commit.
 ) else (
-  set "COMMIT_MESSAGE=Update Sudoku Solver"
   echo [INFO] Creating commit...
   git commit -m "%COMMIT_MESSAGE%"
   if errorlevel 1 goto :error

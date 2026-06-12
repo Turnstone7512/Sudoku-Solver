@@ -17,6 +17,7 @@
       --butter: #fff0b8;
       --blue: #9dd9f3;
       --blue-text: #4aaed5;
+      --green-text: #58b889;
       --danger: #e25563;
       --pastel-red: #ff9eaa;
       --line: #b9adc8;
@@ -134,6 +135,10 @@
       background: var(--lavender);
     }
 
+    .pause-button {
+      background: #d5e8ff;
+    }
+
     .puzzle-button {
       background: var(--butter);
     }
@@ -185,6 +190,13 @@
 
     .status.error {
       color: var(--danger);
+    }
+
+    .timer-display {
+      color: var(--muted);
+      font-size: 0.95rem;
+      font-weight: 800;
+      min-height: 24px;
     }
 
     .sudoku-wrap {
@@ -291,8 +303,20 @@
       font-weight: 300;
     }
 
+    .cell.player {
+      color: var(--green-text);
+      font-weight: 300;
+    }
+
     .cell.locked {
       cursor: not-allowed;
+    }
+
+    .sudoku-board.paused .cell {
+      background: #d9d6dd;
+      color: transparent;
+      pointer-events: none;
+      text-shadow: none;
     }
 
     .number-menu {
@@ -388,6 +412,11 @@
     .swatch-blue {
       background: #eefaff;
       border: 1px solid var(--blue-text);
+    }
+
+    .swatch-green {
+      background: #eefaf4;
+      border: 1px solid var(--green-text);
     }
 
     .history-panel {
@@ -667,8 +696,10 @@
                 <button class="difficulty-option" type="button" data-difficulty="hell">地獄：15 - 20 格</button>
               </div>
             </div>
+            <button class="pause-button" id="pauseButton" type="button">暫停</button>
           </div>
           <div class="status" id="status" role="status" aria-live="polite">準備好了，先填一些線索吧。</div>
+          <div class="timer-display" id="timerDisplay" aria-live="polite">00:00</div>
         </div>
 
         <div class="sudoku-wrap" id="boardWrap">
@@ -688,6 +719,7 @@
         <div class="legend" aria-label="顏色說明">
           <span><span class="swatch swatch-red"></span>紅字代表目前違反數獨規則。</span>
           <span><span class="swatch swatch-blue"></span>淺藍細字代表解題計算出的數字。</span>
+          <span><span class="swatch swatch-green"></span>綠色細字代表你手動填入的數字。</span>
         </div>
       </aside>
 
@@ -724,14 +756,20 @@
     const historyButton = document.querySelector("#historyButton");
     const historyPanel = document.querySelector("#historyPanel");
     const historyList = document.querySelector("#historyList");
+    const pauseButton = document.querySelector("#pauseButton");
+    const timerDisplay = document.querySelector("#timerDisplay");
     const puzzleButton = document.querySelector("#puzzleButton");
     const difficultyMenu = document.querySelector("#difficultyMenu");
 
     let board = createEmptyBoard();
     let fixedCells = createEmptyBoard(false);
     let lockedCells = createEmptyBoard(false);
+    let playerCells = createEmptyBoard(false);
+    let solverCells = createEmptyBoard(false);
     let selectedCell = null;
     let lastHistoryTouchTime = 0;
+    let activeChallenge = null;
+    let timerId = null;
 
     function setupResponsiveMode() {
       const mobileMedia = window.matchMedia("(max-width: 820px)");
@@ -828,6 +866,11 @@
     }
 
     function openNumberMenu(cell, row, col) {
+      if (activeChallenge?.isPaused) {
+        setStatus("目前已暫停，請按恢復後再繼續。", true);
+        return;
+      }
+
       if (lockedCells[row][col]) {
         selectedCell = null;
         closeNumberMenu();
@@ -860,11 +903,14 @@
 
       const { row, col } = selectedCell;
       board[row][col] = board[row][col] === value ? EMPTY : value;
-      fixedCells[row][col] = board[row][col] !== EMPTY;
+      playerCells[row][col] = board[row][col] !== EMPTY && !lockedCells[row][col];
+      solverCells[row][col] = false;
+      fixedCells[row][col] = lockedCells[row][col];
       selectedCell = null;
       closeNumberMenu();
       updateBoardView();
       validateBoard();
+      checkChallengeCompletion();
     }
 
     function closeNumberMenu() {
@@ -880,8 +926,9 @@
 
         cell.textContent = value || "";
         cell.classList.toggle("invalid", invalidCells.has(key));
-        cell.classList.toggle("given", Boolean(value && fixedCells[row][col]));
-        cell.classList.toggle("solved", Boolean(value && !fixedCells[row][col]));
+        cell.classList.toggle("given", Boolean(value && lockedCells[row][col]));
+        cell.classList.toggle("player", Boolean(value && playerCells[row][col]));
+        cell.classList.toggle("solved", Boolean(value && solverCells[row][col]));
         cell.classList.toggle("locked", Boolean(lockedCells[row][col]));
       });
     }
@@ -970,6 +1017,10 @@
 
     function solveCurrentBoard() {
       closeNumberMenu();
+      if (activeChallenge?.isPaused) {
+        setStatus("目前已暫停，請按恢復後再解題。", true);
+        return;
+      }
 
       if (!validateBoard()) {
         return;
@@ -978,19 +1029,25 @@
       const puzzle = board.map((row) => row.slice());
       const givenCells = board.map((row) => row.map((value) => value !== EMPTY));
       const puzzleBoard = board.map((row) => row.slice());
+      const remainingBeforeSolve = countEmptyCells(board);
       fixedCells = givenCells.map((row) => row.slice());
 
       if (solveGrid(puzzle)) {
         board = puzzle;
+        solverCells = givenCells.map((row) => row.map((isGiven) => !isGiven));
         updateBoardView();
         saveHistory({
           type: "解題",
           puzzleBoard,
           board: board.map((row) => row.slice()),
-          solvedCells: givenCells.map((row) => row.map((isGiven) => !isGiven)),
+          solvedCells: solverCells.map((row) => row.slice()),
           clueCount: countFilledCells(givenCells),
+          remainingCount: remainingBeforeSolve,
+          completed: false,
+          directSolve: true,
           createdAt: new Date().toISOString()
         });
+        stopChallengeTimer(true);
         setStatus("已完成解題，淺藍色是解題填入的數字。");
       } else {
         setStatus("找不到符合規則的解答，請調整線索數字。", true);
@@ -1075,9 +1132,12 @@
     }
 
     function clearBoard() {
+      stopChallengeTimer(true);
       board = createEmptyBoard();
       fixedCells = createEmptyBoard(false);
       lockedCells = createEmptyBoard(false);
+      playerCells = createEmptyBoard(false);
+      solverCells = createEmptyBoard(false);
       closeNumberMenu();
       closeDifficultyMenu();
       updateBoardView();
@@ -1113,6 +1173,8 @@
       board = createEmptyBoard();
       fixedCells = createEmptyBoard(false);
       lockedCells = createEmptyBoard(false);
+      playerCells = createEmptyBoard(false);
+      solverCells = createEmptyBoard(false);
 
       for (let index = 0; index < SIZE * SIZE; index += 1) {
         if (!clueKeys.has(index)) {
@@ -1130,20 +1192,36 @@
       closeDifficultyMenu();
       updateBoardView();
       validateBoard();
+      const historyId = createHistoryId();
       saveHistory({
+        id: historyId,
         type: "出題",
         difficulty: difficulty.label,
         puzzleBoard: board.map((row) => row.slice()),
         board: board.map((row) => row.slice()),
         solvedCells: createEmptyBoard(false),
         clueCount,
+        remainingCount: countEmptyCells(board),
+        completed: false,
         createdAt: new Date().toISOString()
+      });
+      startChallengeTimer({
+        id: historyId,
+        difficulty: difficulty.label
       });
       setStatus(`${difficulty.label}題目已產生，隨機顯示 ${clueCount} 格數字。`);
     }
 
     function countFilledCells(grid) {
       return grid.flat().filter(Boolean).length;
+    }
+
+    function countEmptyCells(grid) {
+      return SIZE * SIZE - countFilledCells(grid);
+    }
+
+    function createHistoryId() {
+      return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     }
 
     function getHistory() {
@@ -1163,6 +1241,126 @@
       } catch (error) {
         setStatus("歷史紀錄儲存失敗，可能是瀏覽器儲存空間受限。", true);
       }
+    }
+
+    function updateHistoryRecord(id, updates) {
+      if (!id) {
+        return;
+      }
+
+      try {
+        const history = getHistory();
+        const nextHistory = history.map((record) => (
+          record.id === id ? { ...record, ...updates } : record
+        ));
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
+        renderHistory();
+      } catch (error) {
+        setStatus("歷史紀錄更新失敗，可能是瀏覽器儲存空間受限。", true);
+      }
+    }
+
+    function startChallengeTimer({ id, difficulty }) {
+      stopChallengeTimer(false);
+      activeChallenge = {
+        id,
+        difficulty,
+        startedAt: Date.now(),
+        elapsedBeforePause: 0,
+        isPaused: false
+      };
+      pauseButton.textContent = "暫停";
+      boardElement.classList.remove("paused");
+      updateTimerDisplay();
+      timerId = window.setInterval(updateTimerDisplay, 1000);
+    }
+
+    function stopChallengeTimer(resetDisplay = true) {
+      if (timerId) {
+        window.clearInterval(timerId);
+        timerId = null;
+      }
+      activeChallenge = null;
+      pauseButton.textContent = "暫停";
+      boardElement.classList.remove("paused");
+      if (resetDisplay) {
+        timerDisplay.textContent = "00:00";
+      }
+    }
+
+    function getElapsedMs() {
+      if (!activeChallenge) {
+        return 0;
+      }
+
+      if (activeChallenge.isPaused) {
+        return activeChallenge.elapsedBeforePause;
+      }
+
+      return activeChallenge.elapsedBeforePause + Date.now() - activeChallenge.startedAt;
+    }
+
+    function updateTimerDisplay() {
+      timerDisplay.textContent = formatDuration(getElapsedMs());
+    }
+
+    function togglePause() {
+      if (!activeChallenge) {
+        setStatus("目前沒有進行中的題目。", true);
+        return;
+      }
+
+      if (activeChallenge.isPaused) {
+        activeChallenge.isPaused = false;
+        activeChallenge.startedAt = Date.now();
+        pauseButton.textContent = "暫停";
+        boardElement.classList.remove("paused");
+        timerId = window.setInterval(updateTimerDisplay, 1000);
+        setStatus("已恢復計時。");
+        return;
+      }
+
+      activeChallenge.elapsedBeforePause = getElapsedMs();
+      activeChallenge.isPaused = true;
+      pauseButton.textContent = "恢復";
+      boardElement.classList.add("paused");
+      if (timerId) {
+        window.clearInterval(timerId);
+        timerId = null;
+      }
+      updateTimerDisplay();
+      closeNumberMenu();
+      setStatus("已暫停，格子已反灰並暫停計時。");
+    }
+
+    function checkChallengeCompletion() {
+      if (!activeChallenge || activeChallenge.isPaused) {
+        return;
+      }
+
+      const invalidCells = findInvalidCells(board);
+      const remainingCount = countEmptyCells(board);
+      if (remainingCount !== 0 || invalidCells.size !== 0) {
+        updateHistoryRecord(activeChallenge.id, {
+          board: board.map((row) => row.slice()),
+          remainingCount,
+          completed: false
+        });
+        return;
+      }
+
+      const elapsedMs = getElapsedMs();
+      const difficulty = activeChallenge.difficulty;
+      updateHistoryRecord(activeChallenge.id, {
+        board: board.map((row) => row.slice()),
+        remainingCount: 0,
+        completed: true,
+        completedAt: new Date().toISOString(),
+        elapsedMs
+      });
+      stopChallengeTimer(false);
+      setStatus(`[${difficulty}] 挑戰成功，花費時間：${formatDuration(elapsedMs)}`);
+      window.alert(`[${difficulty}] 挑戰成功\n花費時間：${formatDuration(elapsedMs)}`);
     }
 
     function toggleHistoryPanel(forceOpen) {
@@ -1229,20 +1427,26 @@
         const detail = document.createElement("span");
         detail.textContent = `${record.clueCount || 0} 格線索`;
 
+        const result = document.createElement("span");
+        result.textContent = getHistoryResultText(record);
+
         const time = document.createElement("span");
         time.textContent = formatHistoryTime(record.createdAt);
 
-        meta.append(title, detail, time);
+        meta.append(title, detail, result, time);
         card.append(meta, createMiniBoard(record));
         historyList.appendChild(card);
       });
     }
 
     function loadHistoryPuzzle(record) {
+      stopChallengeTimer(true);
       const puzzle = getPuzzleFromHistory(record);
       board = puzzle.map((row) => row.slice());
       fixedCells = puzzle.map((row) => row.map((value) => value !== EMPTY));
       lockedCells = fixedCells.map((row) => row.slice());
+      playerCells = createEmptyBoard(false);
+      solverCells = createEmptyBoard(false);
       selectedCell = null;
       closeNumberMenu();
       closeDifficultyMenu();
@@ -1305,6 +1509,32 @@
       });
     }
 
+    function formatDuration(ms) {
+      const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      const paddedMinutes = String(minutes).padStart(2, "0");
+      const paddedSeconds = String(seconds).padStart(2, "0");
+
+      if (hours > 0) {
+        return `${hours}:${paddedMinutes}:${paddedSeconds}`;
+      }
+
+      return `${paddedMinutes}:${paddedSeconds}`;
+    }
+
+    function getHistoryResultText(record) {
+      if (record.completed && typeof record.elapsedMs === "number") {
+        return `花費時間：${formatDuration(record.elapsedMs)}`;
+      }
+
+      const remainingCount = typeof record.remainingCount === "number"
+        ? record.remainingCount
+        : countEmptyCells(getPuzzleFromHistory(record));
+      return `未完成 剩餘${remainingCount}格未填入`;
+    }
+
     document.addEventListener("click", (event) => {
       const clickedCell = event.target.classList.contains("cell");
       const clickedNumberMenu = numberMenu.contains(event.target);
@@ -1330,6 +1560,7 @@
     clearButton.addEventListener("click", clearBoard);
     historyButton.addEventListener("click", handleHistoryButtonClick);
     historyButton.addEventListener("touchend", handleHistoryButtonTouch, { passive: false });
+    pauseButton.addEventListener("click", togglePause);
     puzzleButton.addEventListener("click", toggleDifficultyMenu);
     difficultyMenu.addEventListener("click", (event) => {
       const option = event.target.closest("[data-difficulty]");
